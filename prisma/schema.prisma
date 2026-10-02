@@ -1,0 +1,323 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource postgresql {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum Role {
+  ADMIN
+  DIRECAO
+  COORDENACAO
+  SECRETARIA
+  PROFESSOR
+  ALUNO
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  JUSTIFIED
+}
+
+model SchoolUnit {
+  id String @id @default(cuid())
+
+  name String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships   Membership[]
+  academicYears AcademicYear[]
+  classGroups   ClassGroup[]
+  subjects      Subject[]
+  students      Student[]
+  auditLogs     AuditLog[]
+}
+
+model AppUser {
+  id String @id @default(cuid())
+
+  clerkUserId String  @unique
+  name        String?
+  email       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships         Membership[]
+  student             Student?
+  teachingAssignments TeachingAssignment[] @relation("ProfessorAssignments")
+  auditLogs           AuditLog[]           @relation("AuditActors")
+}
+
+model Membership {
+  id String @id @default(cuid())
+
+  userId String
+  unitId String
+  role   Role
+
+  user AppUser    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  unit SchoolUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, unitId, role])
+  @@index([userId])
+  @@index([unitId])
+  @@index([unitId, role])
+}
+
+model AcademicYear {
+  id String @id @default(cuid())
+
+  unitId    String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+
+  unit        SchoolUnit   @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  terms       Term[]
+  classGroups ClassGroup[]
+  enrollments Enrollment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([unitId, name])
+  @@index([unitId])
+  @@index([unitId, startDate])
+}
+
+model Term {
+  id String @id @default(cuid())
+
+  academicYearId String
+  name           String
+  sequence       Int
+  startDate      DateTime
+  endDate        DateTime
+
+  academicYear       AcademicYear        @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  assessments        Assessment[]
+  attendanceSessions AttendanceSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([academicYearId, name])
+  @@unique([academicYearId, sequence])
+  @@index([academicYearId])
+}
+
+model ClassGroup {
+  id String @id @default(cuid())
+
+  unitId         String
+  academicYearId String
+  name           String
+
+  unit         SchoolUnit           @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear         @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  assignments  TeachingAssignment[]
+  enrollments  Enrollment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([unitId, academicYearId, name])
+  @@index([unitId])
+  @@index([academicYearId])
+  @@index([unitId, academicYearId])
+}
+
+model Subject {
+  id String @id @default(cuid())
+
+  unitId String
+  name   String
+
+  unit        SchoolUnit           @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  assignments TeachingAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([unitId, name])
+  @@index([unitId])
+}
+
+model TeachingAssignment {
+  id String @id @default(cuid())
+
+  professorId  String
+  classGroupId String
+  subjectId    String
+
+  professor  AppUser    @relation("ProfessorAssignments", fields: [professorId], references: [id], onDelete: Restrict)
+  classGroup ClassGroup @relation(fields: [classGroupId], references: [id], onDelete: Restrict)
+  subject    Subject    @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  assessments        Assessment[]
+  attendanceSessions AttendanceSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classGroupId, subjectId, professorId])
+  @@index([professorId])
+  @@index([classGroupId])
+  @@index([subjectId])
+  @@index([classGroupId, subjectId])
+}
+
+model Student {
+  id String @id @default(cuid())
+
+  unitId             String
+  appUserId          String? @unique
+  name               String
+  registrationNumber String
+
+  unit              SchoolUnit         @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  appUser           AppUser?           @relation(fields: [appUserId], references: [id], onDelete: SetNull)
+  enrollments       Enrollment[]
+  grades            Grade[]
+  attendanceRecords AttendanceRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([unitId, registrationNumber])
+  @@index([unitId])
+  @@index([unitId, name])
+}
+
+model Enrollment {
+  id String @id @default(cuid())
+
+  studentId      String
+  academicYearId String
+  classGroupId   String
+  enrolledAt     DateTime @default(now())
+
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  classGroup   ClassGroup   @relation(fields: [classGroupId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, academicYearId])
+  @@index([studentId])
+  @@index([academicYearId])
+  @@index([classGroupId])
+  @@index([academicYearId, classGroupId])
+}
+
+model Assessment {
+  id String @id @default(cuid())
+
+  teachingAssignmentId String
+  termId               String
+  title                String
+  maxScore             Decimal  @postgresql.Decimal(5, 2)
+  assessmentDate       DateTime
+
+  teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id], onDelete: Restrict)
+  term               Term               @relation(fields: [termId], references: [id], onDelete: Restrict)
+  grades             Grade[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teachingAssignmentId])
+  @@index([termId])
+  @@index([termId, assessmentDate])
+}
+
+model Grade {
+  id String @id @default(cuid())
+
+  assessmentId String
+  studentId    String
+  score        Decimal @postgresql.Decimal(5, 2)
+  notes        String?
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([assessmentId, studentId])
+  @@index([assessmentId])
+  @@index([studentId])
+}
+
+model AttendanceSession {
+  id String @id @default(cuid())
+
+  teachingAssignmentId String
+  termId               String
+  sessionDate          DateTime
+  notes                String?
+
+  teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id], onDelete: Restrict)
+  term               Term               @relation(fields: [termId], references: [id], onDelete: Restrict)
+  records            AttendanceRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teachingAssignmentId])
+  @@index([termId])
+  @@index([termId, sessionDate])
+}
+
+model AttendanceRecord {
+  id String @id @default(cuid())
+
+  attendanceSessionId String
+  studentId           String
+  status              AttendanceStatus
+  notes               String?
+
+  attendanceSession AttendanceSession @relation(fields: [attendanceSessionId], references: [id], onDelete: Cascade)
+  student           Student           @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([attendanceSessionId, studentId])
+  @@index([attendanceSessionId])
+  @@index([studentId])
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  actorId  String?
+  unitId   String
+  action   String
+  entity   String
+  entityId String
+  details  Json?
+
+  actor AppUser?   @relation("AuditActors", fields: [actorId], references: [id], onDelete: SetNull)
+  unit  SchoolUnit @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([unitId])
+  @@index([entity, entityId])
+  @@index([unitId, createdAt])
+}
